@@ -5,7 +5,7 @@
 ## ElMessage
 1. Element Plus UI 组件库的消息提示组件
 2. 引入
-    (1) import { ElMessage } from "element-plus";
-    (2) import "element-plus/theme-chalk/el-message.css"
+    (1)`import { ElMessage } from "element-plus";`
+    (2)`import "element-plus/theme-chalk/el-message.css"`
 3. 使用
-    (1) 官网查看，不会用要认真学呦，学了就会了
+    (1)官网查看，不会用要认真学呦，学了就会了
