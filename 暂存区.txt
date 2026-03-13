@@ -1,0 +1,29 @@
+<script setup>
+</script>
+
+<template>
+  <div class="app-container">
+    <!-- 顶部长栏：放各种选项 -->
+    <header class="top-bar">
+      <div class="top-bar-left">Logo / 标题</div>
+      <div class="top-bar-right">选项1 | 选项2 | 选项3</div>
+    </header>
+
+    <!-- 主体区域：左侧 AI 对话框，右侧 MD 文档 -->
+    <main class="main-layout">
+      <!-- 左侧 AI 对话框 -->
+      <section class="panel panel-left">
+        <h2 class="panel-title">编辑器</h2>
+        <div class="panel-body">这里以后放 AI 对话内容</div>
+      </section>
+
+      <!-- 右侧 MD 文档编辑 -->
+      <section class="panel panel-right">
+        <h2 class="panel-title">Markdown 文档</h2>
+        <div class="panel-body">这里以后放 Markdown 编辑器</div>
+      </section>
+    </main>
+  </div>
+</template>
+
+<style scoped>
