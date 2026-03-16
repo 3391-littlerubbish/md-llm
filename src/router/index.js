@@ -14,12 +14,12 @@ const router = createRouter({
     {
       path: '/markdown',
       component: Markdown,
-      children: [
-        {
-          path: 'llmchat',
-          component: LlmChat
-        }
-      ]
+      // children: [
+      //   {
+      //     path: 'llmchat',
+      //     component: LlmChat
+      //   }
+      // ]
     },
   ],
 })

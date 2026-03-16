@@ -32,12 +32,10 @@
         >清空</el-button
       >
 
-      <el-button
-        size="small"
-        @click="$router.push('/markdown/llmchat')"
-        class="aichat"
+      <el-button size="small" class="aichat" @click="isShow = !isShow"
         >AI小助手</el-button
       >
+      <!-- @click="$router.push('/markdown/llmchat')" -->
     </div>
 
     <!-- 编辑区 + 预览区 -->
@@ -72,15 +70,123 @@
       </div>
     </div>
   </div>
+
+  <!-- 抽屉式ai-chat -->
+  <transition name="aichat">
+    <div v-if="isShow" class="ai-chat">
+      <!-- 头部 -->
+      <div class="chat-header">
+        <div class="chat-header-left">
+          <div class="chat-avatar">AI</div>
+          <div>
+            <div class="chat-title">AI 助手</div>
+            <div class="chat-subtitle">随时为你解答</div>
+          </div>
+        </div>
+        <el-tooltip content="模型设置" placement="bottom">
+          <el-button text circle @click="settingVisible = true">
+            <el-icon size="16"><Setting /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+
+      <!-- 消息列表 -->
+      <div class="chat-messages" ref="messagesRef">
+        <!-- <div>{{ aiReply }}</div> -->
+        <div
+          v-for="(item, index) in messages"
+          :key="index"
+          :class="{
+            user: item.role === 'user',
+            assistant: item.role === 'assistant',
+          }"
+        >
+          {{ item.content }}
+        </div>
+      </div>
+
+      <!-- 输入区 -->
+      <div class="chat-input">
+        <el-input
+          v-model="inputText"
+          type="textarea"
+          :rows="3"
+          placeholder="有什么可以帮你的..."
+          resize="none"
+        />
+        <div class="chat-input-footer">
+          <span class="hint">Shift + Enter 换行</span>
+          <el-button type="primary" size="small" round @click="getInput">
+            发送 ↑
+          </el-button>
+        </div>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { marked } from "marked";
 
 import { ElMessage } from "element-plus";
 import "element-plus/theme-chalk/el-message.css";
 
+// 引入设置图标
+import { Setting } from "@element-plus/icons-vue";
+
+const goChat = async () => {
+  const res = await fetch("/api/compatible-mode/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
+    },
+    body: JSON.stringify(data.value),
+    // 注意是data.value不是data，一天在这里栽了两回
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder(); // 将二进制转为字符串
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const text = decoder.decode(value);
+
+    // 第一步：按换行分割，可能有多行
+    const lines = text.split("\n");
+
+    // 第二步：遍历每一行
+    for (const line of lines) {
+      // 第三步：跳过空行和 [DONE]
+      if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+
+      // 第四步：去掉 'data: ' 前缀，再 JSON.parse
+      const json = JSON.parse(line.slice(6));
+
+      // 第五步：取内容
+      const text = json.choices?.[0]?.delta?.content;
+      if (text) {
+        console.log(text);
+        messages.value[messages.value.length - 1].content += text;
+        messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+      }
+    }
+  }
+};
+
+const messagesRef = ref(null);
+
+const messages = ref([]);
+let data = ref({
+  messages: messages.value,
+  model: "qwen-turbo",
+  stream: true,
+});
+
+//#region
 // ── 初始内容 ──────────────────────────────────
 const content = ref(`# 欢迎使用 Markdown 编辑器
 
@@ -190,17 +296,37 @@ function clearContent() {
   content.value = "";
   ElMessage.success("已清空");
 }
+//#endregion
+
+// 展示ai对话框
+const isShow = ref(true);
+
+const inputText = ref("");
+
+function getInput() {
+  messages.value.push({
+    role: "user",
+    content: inputText.value,
+  });
+
+  messages.value.push({
+    role: "assistant",
+    content: "",
+  });
+  goChat();
+}
 </script>
 
 <style scoped>
+/* #region */
 .md-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: #fff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-
 /* 工具栏 */
 .toolbar {
   display: flex;
@@ -389,5 +515,132 @@ function clearContent() {
 .preview-content :deep(img) {
   max-width: 100%;
   border-radius: 4px;
+}
+/* #endregion */
+
+/* ---------抽屉式ai-chat-------- */
+/* #region */
+.ai-chat {
+  position: absolute;
+  right: 0px;
+  top: 50px;
+  width: 45%;
+  height: 80%;
+  background: #f7f8fc;
+  border-bottom-left-radius: 20px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+/* 动画效果 */
+.aichat-enter-from,
+.aichat-leave-to {
+  transform: translateX(100%);
+}
+
+.aichat-enter-active,
+.aichat-leave-active {
+  transition: all 0.7s ease;
+}
+
+/* 框内样式 */
+/* #region */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 64px;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #409eff, #6b8cff);
+
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.chat-subtitle {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 1px;
+}
+/* #endregion */
+
+.chat-messages {
+  /* flex: 1; */
+  overflow-y: auto;
+  padding: 20px 16px;
+  height: 61%;
+}
+
+/* 输入框 */
+/* #region */
+.chat-input {
+  padding: 12px 16px 16px;
+  background: #fff;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+  border-bottom-left-radius: 20px;
+}
+
+.chat-input .el-textarea__inner {
+  background: #f7f8fc;
+  border-radius: 10px;
+  border: 1px solid #e8e8e8;
+  font-size: 13px;
+}
+
+.chat-input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.hint {
+  font-size: 11px;
+  color: #c0c4cc;
+}
+/* #endregion */
+
+/* #endregion */
+
+.assistant {
+  width: fit-content;
+  padding: 10px;
+  border-radius: 10%;
+  background: white;
+}
+.user {
+  width: fit-content;
+  margin-left: auto;
+  padding: 10px;
+  border-radius: 10%;
+  background: rgb(219, 236, 243);
 }
 </style>

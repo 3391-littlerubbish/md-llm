@@ -1,4 +1,4 @@
-<template>haha</template>
+<template></template>
 
 <script setup>
 </script>
