@@ -1,6 +1,7 @@
 <template>
   <div class="md-editor">
     <!-- 工具栏 -->
+    <!-- #region -->
     <div class="toolbar">
       <el-button-group>
         <el-button size="small" @click="insert('# ', '')">H1</el-button>
@@ -37,37 +38,44 @@
       >
       <!-- @click="$router.push('/markdown/llmchat')" -->
     </div>
+    <!-- #endregion -->
 
     <!-- 编辑区 + 预览区 -->
     <div class="editor-body">
-      <!-- 左：编辑 -->
-      <div class="pane pane-editor">
-        <!-- 1. -->
-        <div class="pane-label">编辑</div>
-        <!-- 2. -->
-        <textarea
-          ref="textareaRef"
-          v-model="content"
-          class="editor-textarea"
-          placeholder="开始写作..."
-          @keydown.tab.prevent="handleTab"
-        ></textarea>
-        <!-- 3. -->
-        <div class="status-bar">
-          <span>字数：{{ wordCount }}</span>
-          <span>行数：{{ lineCount }}</span>
-          <span>字符：{{ content.length }}</span>
-        </div>
-      </div>
+      <el-splitter>
+        <!-- 左：编辑 -->
+        <el-splitter-panel :collapsible="isCollapsible" min="50">
+          <div class="pane pane-editor">
+            <!-- 1. -->
+            <div class="pane-label">编辑</div>
+            <!-- 2. -->
+            <textarea
+              ref="textareaRef"
+              v-model="content"
+              class="editor-textarea"
+              placeholder="开始写作..."
+              @keydown.tab.prevent="handleTab"
+            ></textarea>
+            <!-- 3. -->
+            <div class="status-bar">
+              <span>字数：{{ wordCount }}</span>
+              <span>行数：{{ lineCount }}</span>
+              <span>字符：{{ content.length }}</span>
+            </div>
+          </div>
+        </el-splitter-panel>
 
-      <!-- 分隔线 -->
-      <div class="divider"></div>
+        <!-- 分隔线 -->
+        <div class="divider"></div>
 
-      <!-- 右：预览 -->
-      <div class="pane pane-preview">
-        <div class="pane-label">预览</div>
-        <div class="preview-content" v-html="renderedHTML"></div>
-      </div>
+        <!-- 右：预览 -->
+        <el-splitter-panel :collapsible="isCollapsible">
+          <div class="pane pane-preview">
+            <div class="pane-label">预览</div>
+            <div class="preview-content" v-html="renderedHTML"></div>
+          </div>
+        </el-splitter-panel>
+      </el-splitter>
     </div>
   </div>
 
@@ -93,15 +101,24 @@
       <!-- 消息列表 -->
       <div class="chat-messages" ref="messagesRef">
         <!-- <div>{{ aiReply }}</div> -->
-        <div
-          v-for="(item, index) in messages"
-          :key="index"
-          :class="{
-            user: item.role === 'user',
-            assistant: item.role === 'assistant',
-          }"
-        >
-          {{ item.content }}
+        <div v-for="(item, index) in messages" :key="index">
+          <div
+            v-if="item.role === 'assistant'"
+            v-html="marked.parse(item.content)"
+            :class="{
+              user: item.role === 'user',
+              assistant: item.role === 'assistant',
+            }"
+          ></div>
+          <div
+            v-else
+            :class="{
+              user: item.role === 'user',
+              assistant: item.role === 'assistant',
+            }"
+          >
+            {{ item.content }}
+          </div>
         </div>
       </div>
 
@@ -116,7 +133,13 @@
         />
         <div class="chat-input-footer">
           <span class="hint">Shift + Enter 换行</span>
-          <el-button type="primary" size="small" round @click="getInput">
+          <el-button
+            type="primary"
+            size="small"
+            round
+            @click="getInput"
+            :disabled="loading"
+          >
             发送 ↑
           </el-button>
         </div>
@@ -126,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed } from "vue";
 import { marked } from "marked";
 
 import { ElMessage } from "element-plus";
@@ -134,7 +157,9 @@ import "element-plus/theme-chalk/el-message.css";
 
 // 引入设置图标
 import { Setting } from "@element-plus/icons-vue";
+const isCollapsible = ref(true);
 
+const loading = ref(false);
 const goChat = async () => {
   const res = await fetch("/api/compatible-mode/v1/chat/completions", {
     method: "POST",
@@ -151,7 +176,10 @@ const goChat = async () => {
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      loading.value = false;
+      break;
+    }
 
     const text = decoder.decode(value);
 
@@ -304,6 +332,7 @@ const isShow = ref(true);
 const inputText = ref("");
 
 function getInput() {
+  loading.value = true;
   messages.value.push({
     role: "user",
     content: inputText.value,
@@ -314,6 +343,7 @@ function getInput() {
     content: "",
   });
   goChat();
+  inputText.value = "";
 }
 </script>
 
@@ -380,7 +410,8 @@ function getInput() {
 
 /* 编辑器 textarea */
 .editor-textarea {
-  flex: 1;
+  /* flex: 1; */
+  height: 610px;
   padding: 20px;
   border: none;
   outline: none;
@@ -633,14 +664,14 @@ function getInput() {
 .assistant {
   width: fit-content;
   padding: 10px;
-  border-radius: 10%;
+  border-radius: 5%;
   background: white;
 }
 .user {
   width: fit-content;
   margin-left: auto;
   padding: 10px;
-  border-radius: 10%;
+  border-radius: 5%;
   background: rgb(219, 236, 243);
 }
 </style>
