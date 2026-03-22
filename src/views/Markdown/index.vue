@@ -3,36 +3,9 @@
     <!-- 工具栏 -->
     <!-- #region -->
     <div class="toolbar">
-      <el-button-group>
-        <el-button size="small" @click="insert('# ', '')">H1</el-button>
-        <el-button size="small" @click="insert('## ', '')">H2</el-button>
-        <el-button size="small" @click="insert('### ', '')">H3</el-button>
-      </el-button-group>
-
-      <el-divider direction="vertical" />
-
-      <el-button-group>
-        <el-button size="small" @click="wrap('**', '**')"><b>B</b></el-button>
-        <el-button size="small" @click="wrap('*', '*')"><i>I</i></el-button>
-        <el-button size="small" @click="wrap('~~', '~~')"><s>S</s></el-button>
-        <el-button size="small" @click="wrap('`', '`')">Code</el-button>
-      </el-button-group>
-
-      <el-divider direction="vertical" />
-
-      <el-button-group>
-        <el-button size="small" @click="insert('- ', '')">列表</el-button>
-        <el-button size="small" @click="insert('> ', '')">引用</el-button>
-        <el-button size="small" @click="insertCodeBlock()">代码块</el-button>
-        <el-button size="small" @click="insertHr()">分割线</el-button>
-      </el-button-group>
-
-      <el-divider direction="vertical" />
-
-      <el-button size="small" @click="clearContent" type="danger" plain
-        >清空</el-button
+      <el-button size="small" class="history" @click="isHistory = !isHistory"
+        >历史记录</el-button
       >
-
       <el-button size="small" class="aichat" @click="isShow = !isShow"
         >AI小助手</el-button
       >
@@ -43,11 +16,86 @@
     <!-- 编辑区 + 预览区 -->
     <div class="editor-body">
       <el-splitter>
-        <!-- 左：编辑 -->
+        <!-- 左：历史记录 -->
+        <el-splitter-panel
+          v-if="isHistory"
+          :collapsible="isCollapsible"
+          size="200px"
+        >
+          <div class="demo-panel">
+            <ul>
+              <li v-for="item in historyContentList" :key="item.id">
+                <div class="history-title">
+                  <strong>{{ item?.title }}</strong>
+                </div>
+                <div class="history-time">编辑时间 : {{ item.updateAt }}</div>
+              </li>
+            </ul>
+          </div>
+        </el-splitter-panel>
+
+        <!-- 中：编辑 -->
         <el-splitter-panel :collapsible="isCollapsible" min="50">
           <div class="pane pane-editor">
             <!-- 1. -->
-            <div class="pane-label">编辑</div>
+            <div>
+              <div class="pane-label">
+                编辑
+                <el-button-group>
+                  <el-button size="small" @click="insert('# ', '')"
+                    >H1</el-button
+                  >
+                  <el-button size="small" @click="insert('## ', '')"
+                    >H2</el-button
+                  >
+                  <el-button size="small" @click="insert('### ', '')"
+                    >H3</el-button
+                  >
+                </el-button-group>
+
+                <el-divider direction="vertical" />
+
+                <el-button-group>
+                  <el-button size="small" @click="wrap('**', '**')"
+                    ><b>B</b></el-button
+                  >
+                  <el-button size="small" @click="wrap('*', '*')"
+                    ><i>I</i></el-button
+                  >
+                  <el-button size="small" @click="wrap('~~', '~~')"
+                    ><s>S</s></el-button
+                  >
+                  <el-button size="small" @click="wrap('`', '`')"
+                    >Code</el-button
+                  >
+                </el-button-group>
+
+                <el-divider direction="vertical" />
+
+                <el-button-group>
+                  <el-button size="small" @click="insert('- ', '')"
+                    >列表</el-button
+                  >
+                  <el-button size="small" @click="insert('> ', '')"
+                    >引用</el-button
+                  >
+                  <el-button size="small" @click="insertCodeBlock()"
+                    >代码块</el-button
+                  >
+                  <el-button size="small" @click="insertHr()">分割线</el-button>
+                </el-button-group>
+
+                <el-divider direction="vertical" />
+
+                <el-button
+                  size="small"
+                  @click="clearContent"
+                  type="danger"
+                  plain
+                  >清空</el-button
+                >
+              </div>
+            </div>
             <!-- 2. -->
             <textarea
               ref="textareaRef"
@@ -149,7 +197,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { marked } from "marked";
 
 import { ElMessage } from "element-plus";
@@ -157,6 +205,54 @@ import "element-plus/theme-chalk/el-message.css";
 
 // 引入设置图标
 import { Setting } from "@element-plus/icons-vue";
+
+// ------------------------------------
+
+// 展示历史记录栏
+const isHistory = ref(true);
+
+const historyContent = ref({});
+const historyContentList = ref([]);
+
+const historySave = function () {
+  const now = new Date();
+
+  historyContent.value = {
+    id: id.value,
+    title: title.value,
+    content: content.value,
+    updateAt: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(now.getDate()).padStart(2, "0")} ${String(
+      now.getHours()
+    ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+  };
+
+  historyContentList.value.push(historyContent.value);
+
+  localStorage.setItem(
+    "c7084b5b-9a5a-416a-8a89-5d08ce0e115f",
+    JSON.stringify(historyContentList.value)
+  );
+};
+
+onMounted(() => {
+  const data = localStorage.getItem("c7084b5b-9a5a-416a-8a89-5d08ce0e115f");
+  historyContentList.value = data ? JSON.parse(data) : [];
+
+  const index = historyContentList.value.findIndex(
+    (item) =>
+      Date.now() - new Date(item.updateAt).getTime() <= 1000 * 60 * 60 * 24 * 3
+  );
+
+  historyContentList.value.splice(0, index);
+});
+
+setInterval(() => {
+  historySave();
+}, 900000);
+// ------------------------------------
 const isCollapsible = ref(true);
 
 const loading = ref(false);
@@ -241,6 +337,20 @@ console.log('Hello World')
 开始你的创作吧 ✍️
 `);
 
+const id = ref("");
+const title = ref("");
+
+id.value = crypto.randomUUID(); // 浏览器内置的随机生成id的API
+title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
+
+watch(content, (newVal, oldValue) => {
+  id.value = crypto.randomUUID();
+  title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
+  // 1. replace(/^#+\s*/, '') 是去掉开头的 # 符号，比如 # 欢迎使用 处理后变成 欢迎使用
+  // 2. 去第一行内容作为title
+});
+
+//#region
 // --------文本框元素---------
 const textareaRef = ref(null);
 
@@ -325,9 +435,11 @@ function clearContent() {
   ElMessage.success("已清空");
 }
 //#endregion
+//#endregion
 
+// #region
 // 展示ai对话框
-const isShow = ref(true);
+const isShow = ref(false);
 
 const inputText = ref("");
 
@@ -348,7 +460,6 @@ function getInput() {
 </script>
 
 <style scoped>
-/* #region */
 .md-editor {
   position: relative;
   display: flex;
@@ -386,6 +497,43 @@ function getInput() {
   width: 1px;
   background: #e4e7ed;
   flex-shrink: 0;
+}
+
+/* 历史记录 */
+.demo-panel {
+  width: 100%;
+  height: 100%;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.demo-panel ul li {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  border-bottom: 1px solid #c0c4cc;
+  margin: 10px 0;
+}
+
+.demo-panel ul li .history-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-panel ul li .history-time {
+  position: absolute;
+  font-size: 14px;
+  color: #909399;
+  width: 180px;
+  bottom: 5px;
+  left: 15px;
 }
 
 /* 左右面板 */
@@ -553,6 +701,7 @@ function getInput() {
 /* #region */
 .ai-chat {
   position: absolute;
+  z-index: 1;
   right: 0px;
   top: 50px;
   width: 45%;
