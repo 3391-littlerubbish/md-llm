@@ -9,6 +9,9 @@
       <el-button size="small" class="aichat" @click="isShow = !isShow"
         >AI小助手</el-button
       >
+      <el-button size="small" class="improve" @click="aiImprove"
+        >一键润色</el-button
+      >
       <!-- @click="$router.push('/markdown/llmchat')" -->
     </div>
     <!-- #endregion -->
@@ -154,7 +157,6 @@
             v-if="item.role === 'assistant'"
             v-html="marked.parse(item.content)"
             :class="{
-              user: item.role === 'user',
               assistant: item.role === 'assistant',
             }"
           ></div>
@@ -162,11 +164,9 @@
             v-else
             :class="{
               user: item.role === 'user',
-              assistant: item.role === 'assistant',
             }"
-          >
-            {{ item.content }}
-          </div>
+            v-html="marked.parse(item.content)"
+          ></div>
         </div>
       </div>
 
@@ -208,6 +208,7 @@ import { Setting } from "@element-plus/icons-vue";
 
 // ------------------------------------
 
+// #region
 // 展示历史记录栏
 const isHistory = ref(true);
 
@@ -252,63 +253,11 @@ onMounted(() => {
 setInterval(() => {
   historySave();
 }, 900000);
-// ------------------------------------
+//#endregion
+
 const isCollapsible = ref(true);
 
 const loading = ref(false);
-const goChat = async () => {
-  const res = await fetch("/api/compatible-mode/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
-    },
-    body: JSON.stringify(data.value),
-    // 注意是data.value不是data，一天在这里栽了两回
-  });
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder(); // 将二进制转为字符串
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      loading.value = false;
-      break;
-    }
-
-    const text = decoder.decode(value);
-
-    // 第一步：按换行分割，可能有多行
-    const lines = text.split("\n");
-
-    // 第二步：遍历每一行
-    for (const line of lines) {
-      // 第三步：跳过空行和 [DONE]
-      if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-
-      // 第四步：去掉 'data: ' 前缀，再 JSON.parse
-      const json = JSON.parse(line.slice(6));
-
-      // 第五步：取内容
-      const text = json.choices?.[0]?.delta?.content;
-      if (text) {
-        console.log(text);
-        messages.value[messages.value.length - 1].content += text;
-        messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
-      }
-    }
-  }
-};
-
-const messagesRef = ref(null);
-
-const messages = ref([]);
-let data = ref({
-  messages: messages.value,
-  model: "qwen-turbo",
-  stream: true,
-});
 
 //#region
 // ── 初始内容 ──────────────────────────────────
@@ -441,8 +390,64 @@ function clearContent() {
 // 展示ai对话框
 const isShow = ref(false);
 
+const goChat = async (data) => {
+  const res = await fetch("/api/compatible-mode/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
+    },
+    body: JSON.stringify(data.value),
+    // 注意是data.value不是data，一天在这里栽了两回
+  });
+
+  console.log(res.data);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder(); // 将二进制转为字符串
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      loading.value = false;
+      break;
+    }
+
+    const text = decoder.decode(value);
+
+    // 第一步：按换行分割，可能有多行
+    const lines = text.split("\n");
+
+    // 第二步：遍历每一行
+    for (const line of lines) {
+      // 第三步：跳过空行和 [DONE]
+      if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+
+      // 第四步：去掉 'data: ' 前缀，再 JSON.parse
+      const json = JSON.parse(line.slice(6));
+
+      // 第五步：取内容
+      const text = json.choices?.[0]?.delta?.content;
+      if (text) {
+        messages.value[messages.value.length - 1].content += text;
+        messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+      }
+    }
+  }
+};
+
+const messagesRef = ref(null);
+
+const messages = ref([]);
+let data = ref({
+  messages: messages.value,
+  model: "qwen-turbo",
+  stream: true,
+});
+
 const inputText = ref("");
 
+// 发送问题
 function getInput() {
   loading.value = true;
   messages.value.push({
@@ -454,9 +459,44 @@ function getInput() {
     role: "assistant",
     content: "",
   });
-  goChat();
+
+  localStorage.setItem(
+    "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
+    JSON.stringify(data.value)
+  );
+
+  goChat(data);
   inputText.value = "";
 }
+
+// 一键润色
+function aiImprove() {
+  isShow.value = true;
+  loading.value = true;
+  messages.value.push({
+    role: "user",
+    content: `请帮我润色以下 Markdown 文档：\n\n${content.value}`,
+  });
+
+  messages.value.push({
+    role: "assistant",
+    content: "",
+  });
+
+  localStorage.setItem(
+    "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
+    JSON.stringify(data.value)
+  );
+
+  goChat(data);
+}
+
+onMounted(() => {
+  const message = localStorage.getItem("bb97507d-a94c-4aa5-be91-fd291ddd93d8");
+  messages.value = message ? message : data.value.messages;
+  // 这里用data.value.messages而不用[]的原因:
+  // 1. data.value.messages初始化为[]，而这里如果再赋值为[]就会导致messages.value的地址改变，而data存的是messages的地址，messages的地址变了，data的指向就是空的，data监测messages不再为实时的
+});
 </script>
 
 <style scoped>
@@ -470,7 +510,7 @@ function getInput() {
 }
 /* 工具栏 */
 .toolbar {
-  display: flex;
+  display: relative;
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
@@ -482,7 +522,13 @@ function getInput() {
 }
 
 .aichat {
-  margin-left: auto;
+  position: absolute;
+  right: 100px;
+}
+
+.improve {
+  position: absolute;
+  right: 10px;
 }
 
 /* 编辑区整体 */
