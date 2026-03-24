@@ -15,4 +15,3 @@
 ## 引入setting图标
 1. pnpm install @element-plus/icons-vue
 2. `'import { Setting } from '@element-plus/icons-vue'`
-

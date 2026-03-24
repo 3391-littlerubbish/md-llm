@@ -27,7 +27,11 @@
         >
           <div class="demo-panel">
             <ul>
-              <li v-for="item in historyContentList" :key="item.id">
+              <li
+                v-for="(item, index) in History.historyContentList"
+                :key="item.id"
+                @click="showHistoryContent(index)"
+              >
                 <div class="history-title">
                   <strong>{{ item?.title }}</strong>
                 </div>
@@ -206,53 +210,38 @@ import "element-plus/theme-chalk/el-message.css";
 // 引入设置图标
 import { Setting } from "@element-plus/icons-vue";
 
+// pinia引入封装函数
+import { useHistory } from "@/stores/useHistory";
+const History = useHistory();
 // ------------------------------------
 
 // #region
 // 展示历史记录栏
 const isHistory = ref(true);
 
-const historyContent = ref({});
-const historyContentList = ref([]);
-
-const historySave = function () {
-  const now = new Date();
-
-  historyContent.value = {
-    id: id.value,
-    title: title.value,
-    content: content.value,
-    updateAt: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}-${String(now.getDate()).padStart(2, "0")} ${String(
-      now.getHours()
-    ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-  };
-
-  historyContentList.value.push(historyContent.value);
-
-  localStorage.setItem(
-    "c7084b5b-9a5a-416a-8a89-5d08ce0e115f",
-    JSON.stringify(historyContentList.value)
-  );
+const showHistoryContent = function (index) {
+  // 加一个判断是否保存
+  // 1. 未保存，弹窗--是否保存
+  // 2. 保存，直接向下执行即可
+  // content.value = History.historyContentList[index];
 };
 
 onMounted(() => {
   const data = localStorage.getItem("c7084b5b-9a5a-416a-8a89-5d08ce0e115f");
-  historyContentList.value = data ? JSON.parse(data) : [];
+  History.historyContentList = data ? JSON.parse(data) : [];
 
-  const index = historyContentList.value.findIndex(
+  // 消除超过三天的记录
+  const index = History.historyContentList.findIndex(
     (item) =>
       Date.now() - new Date(item.updateAt).getTime() <= 1000 * 60 * 60 * 24 * 3
   );
 
-  historyContentList.value.splice(0, index);
+  History.historyContentList.splice(0, index);
 });
 
 setInterval(() => {
-  historySave();
-}, 900000);
+  History.historySave(singleContent.value);
+}, 1000000);
 //#endregion
 
 const isCollapsible = ref(true);
@@ -261,30 +250,31 @@ const loading = ref(false);
 
 //#region
 // ── 初始内容 ──────────────────────────────────
-const content = ref(`# 欢迎使用 Markdown 编辑器
+const content = ref("欢迎使用Md编辑器");
+// `# 欢迎使用 Markdown 编辑器
 
-**左边写，右边实时预览。**
+// **左边写，右边实时预览。**
 
-## 支持的语法
+// ## 支持的语法
 
-- *斜体* 和 **粗体**
-- ~~删除线~~
-- \`行内代码\`
+// - *斜体* 和 **粗体**
+// - ~~删除线~~
+// - \`行内代码\`
 
-## 代码块
+// ## 代码块
 
-\`\`\`javascript
-console.log('Hello World')
-\`\`\`
+// \`\`\`javascript
+// console.log('Hello World')
+// \`\`\`
 
-## 引用
+// ## 引用
 
-> 纸上得来终觉浅，绝知此事要躬行。
+// > 纸上得来终觉浅，绝知此事要躬行。
 
----
+// ---
 
-开始你的创作吧 ✍️
-`);
+// 开始你的创作吧 ✍️
+// `
 
 const id = ref("");
 const title = ref("");
@@ -292,11 +282,23 @@ const title = ref("");
 id.value = crypto.randomUUID(); // 浏览器内置的随机生成id的API
 title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
 
+const singleContent = ref({
+  id: id.value,
+  title: title.value,
+  content: content.value,
+});
+
 watch(content, (newVal, oldValue) => {
   id.value = crypto.randomUUID();
   title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
   // 1. replace(/^#+\s*/, '') 是去掉开头的 # 符号，比如 # 欢迎使用 处理后变成 欢迎使用
   // 2. 去第一行内容作为title
+
+  singleContent.value = {
+    id: id.value,
+    title: title.value,
+    content: content.value,
+  };
 });
 
 //#region
@@ -390,18 +392,20 @@ function clearContent() {
 // 展示ai对话框
 const isShow = ref(false);
 
-const goChat = async (data) => {
+const goChat = async () => {
   const res = await fetch("/api/compatible-mode/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
     },
-    body: JSON.stringify(data.value),
+    body: JSON.stringify({
+      messages: messages.value,
+      model: "qwen-turbo",
+      stream: true,
+    }),
     // 注意是data.value不是data，一天在这里栽了两回
   });
-
-  console.log(res.data);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder(); // 将二进制转为字符串
@@ -434,16 +438,25 @@ const goChat = async (data) => {
       }
     }
   }
+
+  localStorage.setItem(
+    "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
+    JSON.stringify({
+      messages: messages.value,
+      model: "qwen-turbo",
+      stream: true,
+    })
+  );
 };
 
 const messagesRef = ref(null);
 
 const messages = ref([]);
-let data = ref({
-  messages: messages.value,
-  model: "qwen-turbo",
-  stream: true,
-});
+// let data = ref({
+//   messages: messages.value,
+//   model: "qwen-turbo",
+//   stream: true,
+// });
 
 const inputText = ref("");
 
@@ -460,12 +473,7 @@ function getInput() {
     content: "",
   });
 
-  localStorage.setItem(
-    "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
-    JSON.stringify(data.value)
-  );
-
-  goChat(data);
+  goChat();
   inputText.value = "";
 }
 
@@ -475,7 +483,7 @@ function aiImprove() {
   loading.value = true;
   messages.value.push({
     role: "user",
-    content: `请帮我润色以下 Markdown 文档：\n\n${content.value}`,
+    content: `请帮我润色以下 Markdown 文档：${content.value}`,
   });
 
   messages.value.push({
@@ -483,17 +491,14 @@ function aiImprove() {
     content: "",
   });
 
-  localStorage.setItem(
-    "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
-    JSON.stringify(data.value)
-  );
-
-  goChat(data);
+  goChat();
 }
 
 onMounted(() => {
   const message = localStorage.getItem("bb97507d-a94c-4aa5-be91-fd291ddd93d8");
-  messages.value = message ? message : data.value.messages;
+
+  messages.value = message ? JSON.parse(message).messages : messages.value;
+
   // 这里用data.value.messages而不用[]的原因:
   // 1. data.value.messages初始化为[]，而这里如果再赋值为[]就会导致messages.value的地址改变，而data存的是messages的地址，messages的地址变了，data的指向就是空的，data监测messages不再为实时的
 });
