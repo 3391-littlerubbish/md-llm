@@ -6,6 +6,7 @@
       <el-button size="small" class="history" @click="isHistory = !isHistory"
         >历史记录</el-button
       >
+      <el-button size="small" class="save" @click="saveToFile">保存</el-button>
       <el-button size="small" class="aichat" @click="isShow = !isShow"
         >AI小助手</el-button
       >
@@ -201,6 +202,8 @@
 </template>
 
 <script setup>
+// ---------------引入----------------
+// #region
 import { ref, computed, onMounted, watch } from "vue";
 import { marked } from "marked";
 
@@ -213,43 +216,26 @@ import { Setting } from "@element-plus/icons-vue";
 // pinia引入封装函数
 import { useHistory } from "@/stores/useHistory";
 const History = useHistory();
-// ------------------------------------
-
-// #region
-// 展示历史记录栏
-const isHistory = ref(true);
-
-const showHistoryContent = function (index) {
-  // 加一个判断是否保存
-  // 1. 未保存，弹窗--是否保存
-  // 2. 保存，直接向下执行即可
-  // content.value = History.historyContentList[index];
-};
-
-onMounted(() => {
-  const data = localStorage.getItem("c7084b5b-9a5a-416a-8a89-5d08ce0e115f");
-  History.historyContentList = data ? JSON.parse(data) : [];
-
-  // 消除超过三天的记录
-  const index = History.historyContentList.findIndex(
-    (item) =>
-      Date.now() - new Date(item.updateAt).getTime() <= 1000 * 60 * 60 * 24 * 3
-  );
-
-  History.historyContentList.splice(0, index);
-});
-
-setInterval(() => {
-  History.historySave(singleContent.value);
-}, 1000000);
 //#endregion
+
+// --------------保存---------------
+const saveToFile = function () {
+  // 1. 创建Blob,它二进制大对象，用于存储文件数据
+  const blob = new Blob([content.value], { type: "text/markdown" });
+  // 2. 创建一个隐藏a标签，添加href属性，设置download表示a标签的用途是下载文件，最后执行点击a实现下载文件并保存
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); // 为 Blob 数据生成一个临时的本地 URL，和当前项目运行所在的浏览器的默认下载位置相同
+  a.download = `${title.value || "未命名"}.md`;
+  a.click();
+
+  URL.revokeObjectURL(a.href); // 释放内存
+};
 
 const isCollapsible = ref(true);
 
 const loading = ref(false);
-
 //#region
-// ── 初始内容 ──────────────────────────────────
+
 const content = ref("欢迎使用Md编辑器");
 // `# 欢迎使用 Markdown 编辑器
 
@@ -276,31 +262,7 @@ const content = ref("欢迎使用Md编辑器");
 // 开始你的创作吧 ✍️
 // `
 
-const id = ref("");
-const title = ref("");
-
-id.value = crypto.randomUUID(); // 浏览器内置的随机生成id的API
-title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
-
-const singleContent = ref({
-  id: id.value,
-  title: title.value,
-  content: content.value,
-});
-
-watch(content, (newVal, oldValue) => {
-  id.value = crypto.randomUUID();
-  title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
-  // 1. replace(/^#+\s*/, '') 是去掉开头的 # 符号，比如 # 欢迎使用 处理后变成 欢迎使用
-  // 2. 去第一行内容作为title
-
-  singleContent.value = {
-    id: id.value,
-    title: title.value,
-    content: content.value,
-  };
-});
-
+// ------------md书写逻辑-------------
 //#region
 // --------文本框元素---------
 const textareaRef = ref(null);
@@ -388,6 +350,61 @@ function clearContent() {
 //#endregion
 //#endregion
 
+// ------------历史记录-------------
+// #region
+// 展示历史记录栏
+const isHistory = ref(true);
+
+const showHistoryContent = function (index) {
+  // 加一个判断是否保存
+  // 1. 未保存，弹窗--是否保存
+  // 2. 保存，直接向下执行即可
+  content.value = History.historyContentList[index].content;
+};
+
+const id = ref("");
+const title = ref("");
+
+id.value = crypto.randomUUID(); // 浏览器内置的随机生成id的API
+title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
+
+const singleContent = ref({
+  id: id.value,
+  title: title.value,
+  content: content.value,
+});
+
+watch(content, (newValue, oldValue) => {
+  id.value = crypto.randomUUID();
+  title.value = content.value.split("\n")[0].replace(/^#+\s*/, "") || "无标题";
+  // 1. replace(/^#+\s*/, '') 是去掉开头的 # 符号，比如 # 欢迎使用 处理后变成 欢迎使用
+  // 2. 去第一行内容作为title
+
+  singleContent.value = {
+    id: id.value,
+    title: title.value,
+    content: content.value,
+  };
+});
+
+onMounted(() => {
+  const data = localStorage.getItem("c7084b5b-9a5a-416a-8a89-5d08ce0e115f");
+  History.historyContentList = data ? JSON.parse(data) : [];
+
+  // 消除超过三天的记录
+  const index = History.historyContentList.findIndex(
+    (item) =>
+      Date.now() - new Date(item.updateAt).getTime() <= 1000 * 60 * 60 * 24 * 3
+  );
+
+  History.historyContentList.splice(0, index);
+});
+
+setInterval(() => {
+  History.historySave(singleContent.value);
+}, 600000);
+//#endregion
+
 // #region
 // 展示ai对话框
 const isShow = ref(false);
@@ -404,11 +421,28 @@ const goChat = async () => {
       model: "qwen-turbo",
       stream: true,
     }),
-    // 注意是data.value不是data，一天在这里栽了两回
+    // 注意是messages.value不是messages，一天在这里栽了两回
   });
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder(); // 将二进制转为字符串
+
+  const queue = [];
+  let timer = null;
+
+  function startTypewriter() {
+    if (timer) return; // 已经在跑了就不重复开启
+    timer = setInterval(() => {
+      if (queue.length === 0) {
+        clearInterval(timer);
+        timer = null;
+        return;
+      }
+      const char = queue.shift();
+      messages.value[messages.value.length - 1].content += char;
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+    }, 30);
+  }
 
   while (true) {
     const { done, value } = await reader.read();
@@ -432,9 +466,16 @@ const goChat = async () => {
 
       // 第五步：取内容
       const text = json.choices?.[0]?.delta?.content;
+      console.log(text);
+
       if (text) {
-        messages.value[messages.value.length - 1].content += text;
-        messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+        queue.push(...text); // 把字符推进队列
+        // 1. push(...'你好')
+        // 2. queue.push('你', '好');  // 等价于下面这种写法
+        // 3. queue.push('你');
+        //    queue.push('好');
+
+        startTypewriter(); // 启动打字机（已启动则忽略）
       }
     }
   }
