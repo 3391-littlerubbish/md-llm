@@ -1,0 +1,21 @@
+function myInstanceOf(obj, Constructor) {
+  if (typeof obj !== 'object' || typeof obj === null) return false
+
+  let proto = Object.getPrototypeOf(obj)
+  while (proto !== null) {
+    if (proto === Constructor.prototype) return true
+    proto = Object.getPrototypeOf(proto)
+  }
+
+  return false
+}
+
+function Person(name) {
+  this.name = name
+}
+
+const obj = new Person('ellezhang')
+
+const result = myInstanceOf(obj, Person)
+console.log(result);
+
