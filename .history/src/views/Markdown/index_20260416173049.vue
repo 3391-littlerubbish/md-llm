@@ -228,10 +228,7 @@ const saveToFile = function () {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); // 为 Blob 数据生成一个临时的本地 URL，和当前项目运行所在的浏览器的默认下载位置相同
   const fileTitle =
-    content.value
-      .split("\n")[0]
-      .replace(/^#+\s*/, "")
-      .trim() || "未命名";
+    content.value.split("\n")[0].replace(/^#+\s*/, "").trim() || "未命名";
   a.download = `${fileTitle}.md`;
   a.click();
 
@@ -405,17 +402,77 @@ onBeforeUnmount(() => {
 // 展示ai对话框
 const isShow = ref(false);
 
-const AI_REQUEST_TIMEOUT_MS = 20000;
-const AI_MAX_RETRY = 2;
-const AI_RETRY_DELAY_MS = 800;
-
-function wait(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+const goChat = async () => {
+  const res = await fetch("/api/compatible-mode/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
+    },
+    body: JSON.stringify({
+      messages: messages.value,
+      model: "qwen-turbo",
+      stream: true,
+    }),
+    // 注意是messages.value不是messages，一天在这里栽了两回
   });
-}
 
-function saveChatLocal() {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder(); // 将二进制转为字符串
+
+  const queue = [];
+  let timer = null;
+
+  function startTypewriter() {
+    if (timer) return; // 已经在跑了就不重复开启
+    timer = setInterval(() => {
+      if (queue.length === 0) {
+        clearInterval(timer);
+        timer = null;
+        return;
+      }
+      const char = queue.shift();
+      messages.value[messages.value.length - 1].content += char;
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+    }, 30);
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      loading.value = false;
+      break;
+    }
+
+    const text = decoder.decode(value);
+
+    // 第一步：按换行分割，可能有多行
+    const lines = text.split("\n");
+
+    // 第二步：遍历每一行
+    for (const line of lines) {
+      // 第三步：跳过空行和 [DONE]
+      if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+
+      // 第四步：去掉 'data: ' 前缀，再 JSON.parse
+      const json = JSON.parse(line.slice(6));
+
+      // 第五步：取内容
+      const text = json.choices?.[0]?.delta?.content;
+      console.log(text);
+
+      if (text) {
+        queue.push(...text); // 把字符推进队列
+        // 1. push(...'你好')
+        // 2. queue.push('你', '好');  // 等价于下面这种写法
+        // 3. queue.push('你');
+        //    queue.push('好');
+
+        startTypewriter(); // 启动打字机（已启动则忽略）
+      }
+    }
+  }
+
   localStorage.setItem(
     "bb97507d-a94c-4aa5-be91-fd291ddd93d8",
     JSON.stringify({
@@ -424,139 +481,6 @@ function saveChatLocal() {
       stream: true,
     })
   );
-}
-
-function getLatestAssistantMessage() {
-  return messages.value[messages.value.length - 1];
-}
-
-async function requestChatCompletion() {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, AI_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch("/api/compatible-mode/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`,
-      },
-      body: JSON.stringify({
-        messages: messages.value,
-        model: "qwen-turbo",
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP_${res.status}`);
-    }
-
-    if (!res.body) {
-      throw new Error("EMPTY_RESPONSE_BODY");
-    }
-
-    return res;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function streamChatResponse(res) {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let sseBuffer = "";
-
-  const queue = [];
-  let timer = null;
-
-  function startTypewriter() {
-    if (timer) return;
-    timer = setInterval(() => {
-      if (queue.length === 0) {
-        clearInterval(timer);
-        timer = null;
-        return;
-      }
-
-      const latest = getLatestAssistantMessage();
-      if (!latest) return;
-
-      latest.content += queue.shift();
-
-      if (messagesRef.value) {
-        messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
-      }
-    }, 30);
-  }
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    sseBuffer += decoder.decode(value, { stream: true });
-    const events = sseBuffer.split("\n\n");
-    sseBuffer = events.pop() || "";
-
-    for (const event of events) {
-      const lines = event.split("\n");
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line.startsWith("data:")) continue;
-
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
-
-        try {
-          const json = JSON.parse(payload);
-          const deltaText = json.choices?.[0]?.delta?.content;
-          if (deltaText) {
-            queue.push(...deltaText);
-            startTypewriter();
-          }
-        } catch {
-          // 忽略单条异常分片，避免中断整个会话流
-          continue;
-        }
-      }
-    }
-  }
-
-  sseBuffer += decoder.decode();
-}
-
-const goChat = async () => {
-  const latestAssistant = getLatestAssistantMessage();
-  try {
-    for (let attempt = 0; attempt <= AI_MAX_RETRY; attempt++) {
-      if (attempt > 0 && latestAssistant) {
-        latestAssistant.content = "";
-      }
-
-      try {
-        const res = await requestChatCompletion();
-        await streamChatResponse(res);
-        saveChatLocal();
-        return;
-      } catch (error) {
-        const isLastAttempt = attempt === AI_MAX_RETRY;
-        if (isLastAttempt) {
-          if (latestAssistant && !latestAssistant.content) {
-            latestAssistant.content = "抱歉，当前请求失败，请稍后重试。";
-          }
-          console.error(error);
-          ElMessage.error("AI 请求失败，请检查网络或密钥配置");
-          return;
-        }
-        await wait(AI_RETRY_DELAY_MS * (attempt + 1));
-      }
-    }
-  } finally {
-    loading.value = false;
-  }
 };
 
 const messagesRef = ref(null);
@@ -572,13 +496,10 @@ const inputText = ref("");
 
 // 发送问题
 function getInput() {
-  const question = inputText.value.trim();
-  if (!question || loading.value) return;
-
   loading.value = true;
   messages.value.push({
     role: "user",
-    content: question,
+    content: inputText.value,
   });
 
   messages.value.push({
@@ -592,18 +513,11 @@ function getInput() {
 
 // 一键润色
 function aiImprove() {
-  if (loading.value) return;
-  const rawContent = content.value.trim();
-  if (!rawContent) {
-    ElMessage.warning("当前内容为空，先输入后再润色");
-    return;
-  }
-
   isShow.value = true;
   loading.value = true;
   messages.value.push({
     role: "user",
-    content: `请帮我润色以下 Markdown 文档：${rawContent}`,
+    content: `请帮我润色以下 Markdown 文档：${content.value}`,
   });
 
   messages.value.push({
